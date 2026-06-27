@@ -1,0 +1,148 @@
+{
+  "phases": {
+    "1": {
+      "pattern": "Single-Server Architecture",
+      "used_by": ["Every application at Day 1", "SQLite", "Redis (single-threaded core)", "Most side projects"],
+      "operational_reality": "Simple to operate, simple to debug. The ceiling is real but often higher than people think — a well-tuned single server can handle more than most startups will ever need.",
+      "what_seniors_argue_about": "When to leave single-server. Too early = wasted complexity. Too late = emergency migration under pressure.",
+      "key_numbers": {
+        "typical_fd_limit": "1024 (soft) to 65535 (hard) per process",
+        "modern_server_connections": "10K-100K concurrent with event loop, 1K-10K with threads",
+        "ssd_iops": "100K-500K random reads, 10K-50K random writes",
+        "network_bandwidth": "1-25 Gbps typical server NIC"
+      }
+    },
+    "2": {
+      "pattern": "Stateless Service Fleet",
+      "used_by": ["AWS Lambda fleet", "Kubernetes Deployments", "Heroku dynos", "Any horizontally-scaled API"],
+      "operational_reality": "Easy to scale out/in. Easy to deploy (rolling update). The external state store becomes your new single point of failure.",
+      "what_seniors_argue_about": "Where to put state: Redis (fast, less durable), PostgreSQL (durable, slower), DynamoDB (scalable, expensive). Each has different failure characteristics.",
+      "key_numbers": {
+        "rolling_deploy_time": "minutes for small fleets, 30-60 min for thousands of instances",
+        "health_check_interval": "5-30 seconds typical",
+        "connection_drain_timeout": "30-60 seconds typical"
+      }
+    },
+    "3": {
+      "pattern": "Write-Ahead Log + LSM/B-Tree",
+      "used_by": ["PostgreSQL (WAL + B-tree)", "LevelDB/RocksDB (WAL + LSM)", "SQLite (WAL mode)", "Kafka (append-only log)"],
+      "operational_reality": "WAL provides crash safety but adds write latency (fsync cost). LSM provides high write throughput but adds read amplification and compaction burden. B-tree provides balanced read/write but has write amplification.",
+      "what_seniors_argue_about": "fsync per transaction vs group commit. Throughput vs durability. Whether you can afford to lose the last 10ms of writes.",
+      "key_numbers": {
+        "fsync_latency_ssd": "0.1-2ms per fsync",
+        "fsync_latency_hdd": "5-15ms per fsync",
+        "group_commit_window": "1-10ms typical",
+        "wal_segment_size": "16MB (PostgreSQL default)"
+      }
+    },
+    "4": {
+      "pattern": "Cache-Aside with TTL",
+      "used_by": ["Redis in front of PostgreSQL (most web apps)", "CDN caching (Cloudflare, Fastly)", "CPU L1/L2/L3 cache (hardware analog)"],
+      "operational_reality": "Works great until invalidation is wrong. Every caching bug manifests as 'users see wrong data' — the hardest kind of bug to debug because it's intermittent and state-dependent.",
+      "what_seniors_argue_about": "TTL duration: too short = no benefit, too long = stale data. Event-driven invalidation: more correct but adds coupling and failure modes to the invalidation path.",
+      "key_numbers": {
+        "redis_throughput": "100K-1M ops/sec single instance",
+        "cache_hit_ratio_target": "95%+ for it to be worthwhile",
+        "typical_ttl": "60s-3600s depending on data change frequency",
+        "stampede_prevention": "jitter ±10-20% of TTL"
+      }
+    },
+    "5": {
+      "pattern": "Async Message Queue Pipeline",
+      "used_by": ["Kafka (event streaming)", "RabbitMQ (task queues)", "SQS (AWS managed)", "Celery (Python task framework)"],
+      "operational_reality": "Decouples producer from consumer in time. But introduces eventual consistency, ordering challenges, and the 'exactly once' illusion. Dead-letter queues are not optional.",
+      "what_seniors_argue_about": "Kafka vs RabbitMQ (log vs queue). At-least-once + idempotency vs at-most-once + loss acceptance. Whether 'exactly once' marketing claims are real (they aren't without end-to-end idempotency).",
+      "key_numbers": {
+        "kafka_throughput": "1-10M messages/sec per cluster",
+        "sqs_latency": "1-10ms typical, up to 20s for delayed messages",
+        "consumer_lag_alert": "seconds for real-time, minutes for batch — depends on SLO",
+        "dead_letter_ratio_alert": "0.1% warrants investigation"
+      }
+    },
+    "6": {
+      "pattern": "Leader-Follower Replication",
+      "used_by": ["PostgreSQL streaming replication", "MySQL binlog replication", "Redis Sentinel", "MongoDB replica sets"],
+      "operational_reality": "Leader failover is the hardest operational problem. Automatic failover gets it wrong 5-30% of the time in split-brain scenarios. Manual failover is safer but slower.",
+      "what_seniors_argue_about": "Automatic vs manual failover. Both have killed production systems. Synchronous replication (safe but slow) vs async (fast but data loss possible on failover).",
+      "key_numbers": {
+        "replication_lag_normal": "sub-millisecond to seconds",
+        "replication_lag_concerning": "5+ seconds",
+        "failover_time_automatic": "10-60 seconds",
+        "failover_time_manual": "1-10 minutes",
+        "data_loss_window_async": "last N seconds of replication lag"
+      }
+    },
+    "7": {
+      "pattern": "Hash/Range Partitioning with Routing Layer",
+      "used_by": ["DynamoDB (hash partitioning)", "CockroachDB (range partitioning)", "Cassandra (consistent hashing)", "MongoDB (sharded clusters)"],
+      "operational_reality": "Choosing the wrong partition key is a multi-month mistake. You can't easily re-partition without downtime or significant engineering investment. Hot partitions are the #1 operational issue.",
+      "what_seniors_argue_about": "Whether to use database-managed sharding (CockroachDB, Vitess) or application-level sharding. The answer depends on team size and operational maturity.",
+      "key_numbers": {
+        "shard_count_starting": "4-16 shards (room to grow without immediate rebalancing)",
+        "hot_partition_threshold": "2-3x average load on one shard",
+        "rebalancing_time": "hours to days for large datasets",
+        "cross_shard_query_cost": "N× single-shard latency (fan-out to all shards)"
+      }
+    },
+    "8": {
+      "pattern": "Raft/Paxos Consensus",
+      "used_by": ["etcd (Raft)", "ZooKeeper (ZAB/Paxos-like)", "Consul (Raft)", "CockroachDB (Raft per range)"],
+      "operational_reality": "Consensus adds latency to every write (majority must acknowledge). Operational simplicity comes from using an existing system (etcd, ZooKeeper) rather than implementing your own. Never implement your own consensus in production.",
+      "what_seniors_argue_about": "Whether you actually NEED consensus or whether eventual consistency with conflict resolution is sufficient. Most systems need consensus in fewer places than architects think.",
+      "key_numbers": {
+        "raft_write_latency": "2-10ms (one RTT to majority)",
+        "election_timeout": "150-300ms typical",
+        "cluster_size": "3 or 5 nodes (never even — defeats majority logic)",
+        "partition_tolerance": "survives minority failure (1 of 3, 2 of 5)"
+      }
+    },
+    "9": {
+      "pattern": "Saga with Compensating Transactions",
+      "used_by": ["Uber trip lifecycle", "Amazon order processing", "Banking fund transfers", "Any multi-service business transaction"],
+      "operational_reality": "Sagas are operationally complex. You need: saga state store, compensation logic for every step, monitoring for stuck sagas, manual intervention tools for compensation failures. Most teams underestimate this operational burden by 5-10x.",
+      "what_seniors_argue_about": "Orchestration (central coordinator) vs choreography (event-driven). Orchestration is debuggable but creates a single point of failure. Choreography is resilient but debugging across services is painful.",
+      "key_numbers": {
+        "saga_failure_rate": "0.1-1% of transactions trigger compensation",
+        "compensation_failure_rate": "1-5% of compensations also fail (needs retry/manual)",
+        "intermediate_state_duration": "milliseconds to minutes depending on async boundaries",
+        "manual_intervention_rate_target": "0.01% or less"
+      }
+    },
+    "10": {
+      "pattern": "Metrics + Traces + Logs (Three Pillars)",
+      "used_by": ["Google (Dapper tracing)", "Uber (Jaeger)", "Every SRE team with >5 services"],
+      "operational_reality": "Observability is expensive — both in engineering time and infrastructure cost. Sampling is necessary at scale (can't store every trace). The 80/20 rule: 20% of the instrumentation gives 80% of the debugging value.",
+      "what_seniors_argue_about": "Structured events (Honeycomb philosophy: one wide event per request) vs three separate pillars. Cost of full-fidelity vs sampling. Whether logs are even necessary if you have good metrics and traces.",
+      "key_numbers": {
+        "trace_sampling_rate": "1-10% at scale, 100% below 1K RPS",
+        "metric_cardinality_limit": "10K-100K unique time series per service",
+        "log_volume": "1-10GB/day per service at moderate traffic",
+        "mttr_improvement": "2-10x with good observability vs without"
+      }
+    },
+    "11": {
+      "pattern": "Circuit Breaker + Bulkhead + Retry with Jitter",
+      "used_by": ["Netflix Hystrix (deprecated but pattern lives on)", "Resilience4j (Java)", "Polly (.NET)", "Any microservices architecture"],
+      "operational_reality": "Resilience patterns are configuration-heavy. Wrong timeouts cause more outages than they prevent. The interaction between circuit breakers and retries can create unexpected behavior (circuit breaker opens because retries are flooding it).",
+      "what_seniors_argue_about": "Whether to build resilience into the application or the infrastructure (service mesh). Application-level gives more control. Infrastructure-level is consistent but opaque.",
+      "key_numbers": {
+        "circuit_breaker_open_duration": "10-60 seconds (should be close to dependency recovery time)",
+        "retry_max_attempts": "2-3 (more is rarely helpful)",
+        "jitter_range": "0 to max_delay (full jitter) or base to max (equal jitter)",
+        "bulkhead_pool_size": "10-100 connections per dependency"
+      }
+    },
+    "12": {
+      "pattern": "Envelope Estimation + Staged Scaling",
+      "used_by": ["Google SRE capacity planning", "Every startup approaching PMF", "Pre-launch load testing"],
+      "operational_reality": "Capacity estimates are always wrong — the question is whether they're wrong by 2x or 10x. The value isn't the number itself but the thinking process that identifies which resource hits the ceiling first.",
+      "what_seniors_argue_about": "How much headroom to maintain. 2x headroom is expensive. 1.2x headroom is risky. The right answer depends on how fast you can scale and how tolerant your users are of degradation.",
+      "key_numbers": {
+        "headroom_target": "2-3x current peak for critical paths",
+        "capacity_review_frequency": "monthly for fast-growing services",
+        "estimation_accuracy_target": "within 2-3x of reality",
+        "scale_up_time": "minutes (auto-scaling) to weeks (new hardware/migration)"
+      }
+    }
+  }
+}

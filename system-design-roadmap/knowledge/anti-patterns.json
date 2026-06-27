@@ -1,0 +1,172 @@
+{
+  "phases": {
+    "1": [
+      {
+        "name": "Premature Optimization Before Measurement",
+        "what_they_do": "Add caching, threading, or async I/O before identifying the actual bottleneck",
+        "why_it_seems_right": "Performance best practices say these are good things",
+        "when_it_kills_you": "You optimize the wrong resource. CPU optimization when the bottleneck is disk I/O. Async I/O when the bottleneck is computation.",
+        "what_to_do_instead": "Measure first. Identify which resource saturates. Then optimize THAT resource.",
+        "signal_you_fell_for_it": "You can't explain which specific resource limit your optimization addresses"
+      }
+    ],
+    "2": [
+      {
+        "name": "Local Memory as 'Temporary' Cache",
+        "what_they_do": "Store session/state in process memory 'just for now' with plans to externalize later",
+        "why_it_seems_right": "It's simpler. Works in dev. Plans to fix it later.",
+        "when_it_kills_you": "Second instance deployed. Users randomly lose state. 'Later' never comes before production.",
+        "what_to_do_instead": "External state from day one. The extra 2 hours of setup saves 2 weeks of debugging.",
+        "signal_you_fell_for_it": "Your service works perfectly with 1 instance but breaks with 2"
+      },
+      {
+        "name": "Session Affinity as Stateless",
+        "what_they_do": "Use sticky sessions to route user always to same instance, call it 'stateless'",
+        "why_it_seems_right": "State stays on one machine per user. Looks scalable.",
+        "when_it_kills_you": "Instance dies → all sticky users lose state. Uneven load (one instance gets all heavy users). Can't auto-scale down.",
+        "what_to_do_instead": "True statelessness: any instance can serve any request. State is external.",
+        "signal_you_fell_for_it": "You need to drain connections during deploy and some users still lose data"
+      }
+    ],
+    "3": [
+      {
+        "name": "Unbounded Write Buffer",
+        "what_they_do": "Buffer all writes in memory, flush periodically or on shutdown",
+        "why_it_seems_right": "Batching improves throughput. Fewer disk operations.",
+        "when_it_kills_you": "Process crash (kill -9, OOM, power loss) before flush — all buffered writes lost. Data acknowledged to client is gone.",
+        "what_to_do_instead": "Write-ahead log with configurable flush interval. Accept the throughput cost for durability.",
+        "signal_you_fell_for_it": "Restarting your service loses recently written data"
+      },
+      {
+        "name": "Index Everything",
+        "what_they_do": "Add indexes on every column/field 'for performance'",
+        "why_it_seems_right": "Reads are faster with indexes. More indexes = more fast.",
+        "when_it_kills_you": "Write throughput collapses. Each write updates N indexes. Write amplification causes disk I/O saturation.",
+        "what_to_do_instead": "Index only access patterns that are actually slow. Measure read vs write ratio. Each index is a trade-off, not a free optimization.",
+        "signal_you_fell_for_it": "Your writes are slower than your reads, or adding data takes longer than reading it"
+      }
+    ],
+    "4": [
+      {
+        "name": "Cache Everything Forever",
+        "what_they_do": "No TTL, no invalidation. Cache grows until memory pressure.",
+        "why_it_seems_right": "Never pay the database cost twice. Maximum performance.",
+        "when_it_kills_you": "Source data changes. Cache serves stale data indefinitely. Users see inconsistent state. Business logic makes decisions on old data.",
+        "what_to_do_instead": "Every cached item needs an invalidation strategy. TTL as a safety net even with event-driven invalidation.",
+        "signal_you_fell_for_it": "Users report 'changes not saving' but the database has the correct value"
+      },
+      {
+        "name": "Cache In Front of Every Read",
+        "what_they_do": "Indiscriminate caching: cache database results, API responses, computed values — all with same strategy",
+        "why_it_seems_right": "Less database load is always good. Latency goes down.",
+        "when_it_kills_you": "Cache churn on rarely-accessed keys wastes memory. Cache invalidation complexity explodes. Debugging requires checking 3 layers.",
+        "what_to_do_instead": "Cache only hot data (Pareto: 20% of keys serve 80% of requests). Different TTLs for different access patterns.",
+        "signal_you_fell_for_it": "Your cache hit ratio is below 50% — you're paying the complexity cost without the benefit"
+      }
+    ],
+    "5": [
+      {
+        "name": "Fire and Forget",
+        "what_they_do": "Publish message to queue and assume it will be processed. No tracking, no dead-letter, no monitoring.",
+        "why_it_seems_right": "Async is async. The consumer will handle it eventually.",
+        "when_it_kills_you": "Consumer crashes. Message lost. No record of failure. Silent data loss that surfaces days later as missing records.",
+        "what_to_do_instead": "At-least-once delivery with consumer acknowledgment. Dead-letter queue for failures. Monitor queue depth and consumer lag.",
+        "signal_you_fell_for_it": "You discover missing data days after the event and can't determine when or why it was lost"
+      },
+      {
+        "name": "Infinite Retries Without Dead-Letter",
+        "what_they_do": "Retry failed messages forever. Never give up.",
+        "why_it_seems_right": "The message must be processed. Persistence is a virtue.",
+        "when_it_kills_you": "Poison message blocks the queue. All subsequent messages are delayed. Processing stops for valid messages.",
+        "what_to_do_instead": "Max retry count + dead-letter queue. Alert on dead-letter growth. Process dead letters manually or with different logic.",
+        "signal_you_fell_for_it": "Your queue depth is growing but consumer is busy (processing the same message over and over)"
+      }
+    ],
+    "6": [
+      {
+        "name": "Read From Leader Always",
+        "what_they_do": "All reads go to leader 'for consistency.' Replicas exist only for failover.",
+        "why_it_seems_right": "Strong consistency. No stale data. Simple mental model.",
+        "when_it_kills_you": "Leader becomes bottleneck. Replicas are wasted capacity. Single point of failure for both reads and writes.",
+        "what_to_do_instead": "Identify which reads NEED strong consistency (very few). Route those to leader. Route the rest to replicas.",
+        "signal_you_fell_for_it": "Your leader is at 90% capacity while replicas are at 5%, and you're considering scaling the leader vertically"
+      },
+      {
+        "name": "Synchronous Replication Everywhere",
+        "what_they_do": "All writes wait for all replicas to acknowledge before returning success",
+        "why_it_seems_right": "No data loss. Strong consistency. Peace of mind.",
+        "when_it_kills_you": "One slow replica makes ALL writes slow. Replica failure makes writes unavailable. You've traded availability for consistency everywhere, even where you don't need it.",
+        "what_to_do_instead": "Synchronous to ONE replica (minimum durability guarantee). Async to others. Accept the trade-off explicitly.",
+        "signal_you_fell_for_it": "Your write latency is determined by your slowest replica, not your leader"
+      }
+    ],
+    "7": [
+      {
+        "name": "Shard by Entity Without Considering Access Patterns",
+        "what_they_do": "Hash partition by primary key. Done.",
+        "why_it_seems_right": "Even distribution. Simple routing. Textbook answer.",
+        "when_it_kills_you": "Cross-partition queries (list by date, search by attribute, aggregations) become scatter-gather nightmares. One query hits ALL shards.",
+        "what_to_do_instead": "Shard by the most common ACCESS PATTERN, not by entity identity. Accept that some queries become expensive and plan for them (denormalization, secondary indexes, CQRS).",
+        "signal_you_fell_for_it": "Your most common list/search queries fan out to every shard and are getting slower as you add data"
+      }
+    ],
+    "8": [
+      {
+        "name": "Distributed Lock Without Fencing",
+        "what_they_do": "Acquire lock. Do work. Release lock. Assume only one holder at a time.",
+        "why_it_seems_right": "That's what locks do. Mutual exclusion. Simple.",
+        "when_it_kills_you": "Lock expires during GC pause or network delay. Second process acquires lock. First process resumes and writes without checking. Both think they have exclusive access.",
+        "what_to_do_instead": "Fencing tokens: lock includes a monotonically increasing token. The protected resource rejects writes with tokens older than the most recent.",
+        "signal_you_fell_for_it": "You see impossible data states that 'couldn't happen if the lock was working correctly'"
+      }
+    ],
+    "9": [
+      {
+        "name": "Distributed Monolith",
+        "what_they_do": "Split into services but require synchronous calls between all of them for every request",
+        "why_it_seems_right": "Services are supposed to be independent. We split them.",
+        "when_it_kills_you": "Availability is PRODUCT of all service availabilities: 99.9% × 99.9% × 99.9% = 99.7%. One slow service makes everything slow. One down service makes everything down.",
+        "what_to_do_instead": "Async communication where possible. Circuit breakers on sync paths. Each service must degrade gracefully when dependencies are unavailable.",
+        "signal_you_fell_for_it": "Deploying one service requires coordinating deploys of three others, or one service's outage takes down the whole system"
+      }
+    ],
+    "10": [
+      {
+        "name": "Alerting on Causes Instead of Symptoms",
+        "what_they_do": "Alert on 'CPU > 80%' or 'disk > 90%' or 'memory > 85%'",
+        "why_it_seems_right": "Resource exhaustion causes outages. Catch it early.",
+        "when_it_kills_you": "CPU at 85% might be fine (batch processing). CPU at 40% might be bad (because it was 5% yesterday). Alert fatigue: hundreds of alerts, most meaningless.",
+        "what_to_do_instead": "Alert on user-facing symptoms: error rate > threshold, latency > SLO, throughput drop. Use resource metrics for DIAGNOSIS, not alerting.",
+        "signal_you_fell_for_it": "Your on-call engineer ignores 80% of alerts because they're not actionable"
+      }
+    ],
+    "11": [
+      {
+        "name": "Retry Without Backoff or Jitter",
+        "what_they_do": "Immediate retry on failure. If it fails, retry again. Fixed interval.",
+        "why_it_seems_right": "The request might work next time. Persistence.",
+        "when_it_kills_you": "Recovering service gets hit by a wall of retries. N clients × R retries = N×R requests on recovery. Thundering herd causes second outage.",
+        "what_to_do_instead": "Exponential backoff with jitter. Clients spread their retries over time. Recovering service gets a gradual ramp, not a wall.",
+        "signal_you_fell_for_it": "Your service recovers from an outage, gets a traffic spike 3x normal, and fails again"
+      },
+      {
+        "name": "Circuit Breaker With Wrong Timeout",
+        "what_they_do": "Circuit breaker open duration set to arbitrary value (30s, 60s) without understanding the dependency's recovery time",
+        "why_it_seems_right": "Any circuit breaker is better than none. Just pick a number.",
+        "when_it_kills_you": "Too short: circuit oscillates between open/closed during partial recovery. Too long: dependency recovered 5 seconds ago but you're still refusing requests for 55 more seconds.",
+        "what_to_do_instead": "Measure dependency's actual recovery time. Set half-open probe interval shorter than full open duration. Use canary requests to test recovery.",
+        "signal_you_fell_for_it": "Your dashboard shows the dependency recovered but your service is still returning errors"
+      }
+    ],
+    "12": [
+      {
+        "name": "Build for Projected Maximum",
+        "what_they_do": "Product says 100x growth in 2 years. Engineer builds for 100x immediately.",
+        "why_it_seems_right": "Be prepared. Don't want to rebuild. Future-proof.",
+        "when_it_kills_you": "Cost: 100x infrastructure for 1x traffic. Complexity: operating a distributed system you don't need yet. The projection was wrong: growth was 5x, not 100x.",
+        "what_to_do_instead": "Build for current + 3-5x headroom. PLAN for 10x (migration path documented). Build 10x only when you're at 3x and can validate the projection.",
+        "signal_you_fell_for_it": "You're running (and paying for) a 50-node Kafka cluster for 100 messages per second"
+      }
+    ]
+  }
+}

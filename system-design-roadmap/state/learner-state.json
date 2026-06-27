@@ -1,0 +1,121 @@
+{
+  "learner_id": null,
+  "started_at": null,
+  "current_phase": 1,
+  "preferred_depth": "intermediate",
+  "preferred_stack": null,
+  "phases": {
+    "1": {
+      "status": "not-started",
+      "theory": { "completed": false, "depth_reached": null, "concepts_covered": [] },
+      "hands_on": { "completed": false, "attempts": 0, "stack": null, "current_step": 0 },
+      "break_it": { "completed": false, "scenarios_passed": [] },
+      "gate": { "passed": false, "attempts": 0, "weak_areas": [] },
+      "synthesis": null,
+      "time_spent_minutes": 0
+    },
+    "2": {
+      "status": "locked",
+      "theory": { "completed": false, "depth_reached": null, "concepts_covered": [] },
+      "hands_on": { "completed": false, "attempts": 0, "stack": null, "current_step": 0 },
+      "break_it": { "completed": false, "scenarios_passed": [] },
+      "gate": { "passed": false, "attempts": 0, "weak_areas": [] },
+      "synthesis": null,
+      "time_spent_minutes": 0
+    },
+    "3": {
+      "status": "locked",
+      "theory": { "completed": false, "depth_reached": null, "concepts_covered": [] },
+      "hands_on": { "completed": false, "attempts": 0, "stack": null, "current_step": 0 },
+      "break_it": { "completed": false, "scenarios_passed": [] },
+      "gate": { "passed": false, "attempts": 0, "weak_areas": [] },
+      "synthesis": null,
+      "time_spent_minutes": 0
+    },
+    "4": {
+      "status": "locked",
+      "theory": { "completed": false, "depth_reached": null, "concepts_covered": [] },
+      "hands_on": { "completed": false, "attempts": 0, "stack": null, "current_step": 0 },
+      "break_it": { "completed": false, "scenarios_passed": [] },
+      "gate": { "passed": false, "attempts": 0, "weak_areas": [] },
+      "synthesis": null,
+      "time_spent_minutes": 0
+    },
+    "5": {
+      "status": "locked",
+      "theory": { "completed": false, "depth_reached": null, "concepts_covered": [] },
+      "hands_on": { "completed": false, "attempts": 0, "stack": null, "current_step": 0 },
+      "break_it": { "completed": false, "scenarios_passed": [] },
+      "gate": { "passed": false, "attempts": 0, "weak_areas": [] },
+      "synthesis": null,
+      "time_spent_minutes": 0
+    },
+    "6": {
+      "status": "locked",
+      "theory": { "completed": false, "depth_reached": null, "concepts_covered": [] },
+      "hands_on": { "completed": false, "attempts": 0, "stack": null, "current_step": 0 },
+      "break_it": { "completed": false, "scenarios_passed": [] },
+      "gate": { "passed": false, "attempts": 0, "weak_areas": [] },
+      "synthesis": null,
+      "time_spent_minutes": 0
+    },
+    "7": {
+      "status": "locked",
+      "theory": { "completed": false, "depth_reached": null, "concepts_covered": [] },
+      "hands_on": { "completed": false, "attempts": 0, "stack": null, "current_step": 0 },
+      "break_it": { "completed": false, "scenarios_passed": [] },
+      "gate": { "passed": false, "attempts": 0, "weak_areas": [] },
+      "synthesis": null,
+      "time_spent_minutes": 0
+    },
+    "8": {
+      "status": "locked",
+      "theory": { "completed": false, "depth_reached": null, "concepts_covered": [] },
+      "hands_on": { "completed": false, "attempts": 0, "stack": null, "current_step": 0 },
+      "break_it": { "completed": false, "scenarios_passed": [] },
+      "gate": { "passed": false, "attempts": 0, "weak_areas": [] },
+      "synthesis": null,
+      "time_spent_minutes": 0
+    },
+    "9": {
+      "status": "locked",
+      "theory": { "completed": false, "depth_reached": null, "concepts_covered": [] },
+      "hands_on": { "completed": false, "attempts": 0, "stack": null, "current_step": 0 },
+      "break_it": { "completed": false, "scenarios_passed": [] },
+      "gate": { "passed": false, "attempts": 0, "weak_areas": [] },
+      "synthesis": null,
+      "time_spent_minutes": 0
+    },
+    "10": {
+      "status": "locked",
+      "theory": { "completed": false, "depth_reached": null, "concepts_covered": [] },
+      "hands_on": { "completed": false, "attempts": 0, "stack": null, "current_step": 0 },
+      "break_it": { "completed": false, "scenarios_passed": [] },
+      "gate": { "passed": false, "attempts": 0, "weak_areas": [] },
+      "synthesis": null,
+      "time_spent_minutes": 0
+    },
+    "11": {
+      "status": "locked",
+      "theory": { "completed": false, "depth_reached": null, "concepts_covered": [] },
+      "hands_on": { "completed": false, "attempts": 0, "stack": null, "current_step": 0 },
+      "break_it": { "completed": false, "scenarios_passed": [] },
+      "gate": { "passed": false, "attempts": 0, "weak_areas": [] },
+      "synthesis": null,
+      "time_spent_minutes": 0
+    },
+    "12": {
+      "status": "locked",
+      "theory": { "completed": false, "depth_reached": null, "concepts_covered": [] },
+      "hands_on": { "completed": false, "attempts": 0, "stack": null, "current_step": 0 },
+      "break_it": { "completed": false, "scenarios_passed": [] },
+      "gate": { "passed": false, "attempts": 0, "weak_areas": [] },
+      "synthesis": null,
+      "time_spent_minutes": 0
+    }
+  },
+  "weakness_map": {},
+  "collected_artifacts": [],
+  "total_time_invested_minutes": 0,
+  "sessions": []
+}

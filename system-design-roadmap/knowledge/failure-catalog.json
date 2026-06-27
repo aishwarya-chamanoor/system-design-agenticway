@@ -1,0 +1,403 @@
+{
+  "phases": {
+    "1": {
+      "title": "The Single Machine Ceiling",
+      "failures": [
+        {
+          "id": "fd-exhaustion",
+          "name": "File Descriptor Exhaustion",
+          "how_to_induce": "Open connections without closing them until EMFILE error",
+          "symptoms": ["connection refused", "EMFILE in logs", "accept() returns error"],
+          "production_frequency": "weekly at scale, instantly during viral events",
+          "detection_difficulty": "medium — easy to miss if you only watch CPU/memory",
+          "blast_radius": "total service unavailability for new connections",
+          "silent_or_loud": "loud — immediate connection refused",
+          "time_to_detect_without_monitoring": "minutes (user reports)"
+        },
+        {
+          "id": "disk-full-mid-write",
+          "name": "Disk Full During Write",
+          "how_to_induce": "Fill filesystem to capacity, then attempt writes",
+          "symptoms": ["partial writes", "corrupted files", "write() returns ENOSPC"],
+          "production_frequency": "monthly (log rotation, temp files, data growth)",
+          "detection_difficulty": "low — but consequences depend on write handling",
+          "blast_radius": "data corruption if writes are not atomic",
+          "silent_or_loud": "can be silent — partial writes may look valid",
+          "time_to_detect_without_monitoring": "hours to days (data corruption discovered later)"
+        },
+        {
+          "id": "cpu-saturation-cascade",
+          "name": "CPU Saturation Cascade",
+          "how_to_induce": "Send compute-heavy requests while maintaining connection queue",
+          "symptoms": ["request timeout", "queue depth grows", "all requests slow (not just heavy ones)"],
+          "production_frequency": "during traffic spikes or algorithmic inefficiency",
+          "detection_difficulty": "low — CPU metrics visible",
+          "blast_radius": "all requests affected due to shared compute",
+          "silent_or_loud": "gradual — slow then sudden",
+          "time_to_detect_without_monitoring": "seconds to minutes (users notice slowness)"
+        }
+      ]
+    },
+    "2": {
+      "title": "Stateless Horizontal Scaling",
+      "failures": [
+        {
+          "id": "instance-kill-mid-request",
+          "name": "Instance Death Mid-Request",
+          "how_to_induce": "kill -9 an instance while requests are in-flight",
+          "symptoms": ["connection reset", "client timeout", "request lost"],
+          "production_frequency": "during deploys, instance recycling, hardware failure",
+          "detection_difficulty": "medium — one instance of many",
+          "blast_radius": "requests to that instance only (if health check removes it)",
+          "silent_or_loud": "loud for affected requests, silent for system overall",
+          "time_to_detect_without_monitoring": "depends on health check interval"
+        },
+        {
+          "id": "slow-instance",
+          "name": "Slow Instance (Gray Failure)",
+          "how_to_induce": "Add artificial latency to one instance (sleep/CPU hog)",
+          "symptoms": ["P99 latency spikes", "load imbalance", "connection pool to slow instance fills"],
+          "production_frequency": "common — GC pauses, noisy neighbors, disk issues",
+          "detection_difficulty": "high — instance passes health checks but is slow",
+          "blast_radius": "fraction of requests get bad latency, averaged out in P50",
+          "silent_or_loud": "silent to operators, loud to affected users",
+          "time_to_detect_without_monitoring": "days (shows up in customer churn, not dashboards)"
+        },
+        {
+          "id": "thundering-herd-on-restart",
+          "name": "Thundering Herd on State Store",
+          "how_to_induce": "Restart all instances simultaneously",
+          "symptoms": ["state store overwhelmed", "connection pool exhausted", "cascading timeouts"],
+          "production_frequency": "during bad deploys, mass restart, failover events",
+          "detection_difficulty": "medium — state store metrics spike",
+          "blast_radius": "total system unavailability until instances stabilize",
+          "silent_or_loud": "very loud — everything fails",
+          "time_to_detect_without_monitoring": "seconds (nothing works)"
+        }
+      ]
+    },
+    "3": {
+      "title": "Data Storage Trade-offs",
+      "failures": [
+        {
+          "id": "crash-without-wal",
+          "name": "Crash Without Write-Ahead Log",
+          "how_to_induce": "kill -9 during write operation (no WAL)",
+          "symptoms": ["data file corrupted", "partial records", "acknowledged writes lost"],
+          "production_frequency": "any unexpected process death or power loss",
+          "detection_difficulty": "varies — may only surface as data inconsistency later",
+          "blast_radius": "all writes since last successful flush are lost",
+          "silent_or_loud": "silent — no error at read time, just missing/corrupt data"
+        },
+        {
+          "id": "wal-corruption",
+          "name": "WAL File Corruption",
+          "how_to_induce": "Manually corrupt bytes in WAL file, then restart",
+          "symptoms": ["recovery fails", "partial recovery", "depends on checksum implementation"],
+          "production_frequency": "rare — disk errors, filesystem bugs",
+          "detection_difficulty": "detected at startup if checksums exist",
+          "blast_radius": "all uncommitted entries in corrupted WAL segment",
+          "silent_or_loud": "loud at recovery time — crash loop or data loss"
+        },
+        {
+          "id": "concurrent-write-crash",
+          "name": "Concurrent Writers + Crash",
+          "how_to_induce": "Multiple writers + kill -9 at random point",
+          "symptoms": ["interleaved partial writes", "lost writes from some writers", "ordering violation"],
+          "production_frequency": "any multi-instance setup writing to shared storage",
+          "detection_difficulty": "high — may appear as 'correct' data that's actually stale",
+          "blast_radius": "subset of concurrent operations lost",
+          "silent_or_loud": "silent — no error, just missing data"
+        }
+      ]
+    },
+    "4": {
+      "title": "Caching and Invalidation",
+      "failures": [
+        {
+          "id": "cold-cache-stampede",
+          "name": "Cold Cache Stampede",
+          "how_to_induce": "Flush/restart cache while serving production traffic",
+          "symptoms": ["database connection pool exhausted", "latency spike 10-100x", "possible database OOM"],
+          "production_frequency": "every cache restart, every deploy that clears cache",
+          "detection_difficulty": "low — very visible",
+          "blast_radius": "entire system — database is the shared dependency"
+        },
+        {
+          "id": "stale-read-window",
+          "name": "Stale Data Window",
+          "how_to_induce": "Update source data, immediately read from cache",
+          "symptoms": ["old data returned to user", "user sees 'changes not saved'"],
+          "production_frequency": "continuous — every write has a staleness window",
+          "detection_difficulty": "high — no errors, data looks valid, it's just old",
+          "blast_radius": "user trust erosion, business logic errors"
+        },
+        {
+          "id": "hot-key-stampede",
+          "name": "Hot Key + TTL Expiry",
+          "how_to_induce": "Single key accessed by many clients + let TTL expire",
+          "symptoms": ["N simultaneous cache misses for same key", "database gets N identical queries"],
+          "production_frequency": "any popular content with TTL expiry",
+          "detection_difficulty": "medium — looks like a traffic spike on one query",
+          "blast_radius": "database load spike, potentially cascading"
+        }
+      ]
+    },
+    "5": {
+      "title": "Asynchronous Processing and Queues",
+      "failures": [
+        {
+          "id": "consumer-kill-mid-processing",
+          "name": "Consumer Death Mid-Processing",
+          "how_to_induce": "kill -9 consumer after dequeue but before ack",
+          "symptoms": ["message redelivered (at-least-once) or lost (at-most-once)"],
+          "production_frequency": "every deploy, every instance restart",
+          "detection_difficulty": "depends on delivery guarantee implementation",
+          "blast_radius": "one message affected per crash"
+        },
+        {
+          "id": "producer-flood",
+          "name": "Producer Flood / Consumer Backpressure",
+          "how_to_induce": "Produce messages 10x faster than consumer capacity",
+          "symptoms": ["queue depth growing", "memory pressure", "consumer lag increasing"],
+          "production_frequency": "traffic spikes, batch imports, upstream bursts",
+          "detection_difficulty": "low — queue depth is visible",
+          "blast_radius": "processing latency for all messages in queue"
+        },
+        {
+          "id": "poison-message",
+          "name": "Poison Message (Infinite Failure)",
+          "how_to_induce": "Enqueue message that causes processing exception every time",
+          "symptoms": ["infinite retry loop", "queue blocked", "consumer stuck on one message"],
+          "production_frequency": "any time input validation is incomplete",
+          "detection_difficulty": "medium — consumer appears busy but queue isn't draining",
+          "blast_radius": "blocks all subsequent messages in ordered queues"
+        }
+      ]
+    },
+    "6": {
+      "title": "Replication and Consistency",
+      "failures": [
+        {
+          "id": "leader-death",
+          "name": "Leader Node Failure",
+          "how_to_induce": "kill -9 the leader process",
+          "symptoms": ["writes fail", "follower serves stale reads", "failover delay"],
+          "production_frequency": "hardware failures, network events, deploys",
+          "detection_difficulty": "low — writes immediately fail",
+          "blast_radius": "all writes blocked until failover completes"
+        },
+        {
+          "id": "replication-lag-stale-reads",
+          "name": "Replication Lag Stale Reads",
+          "how_to_induce": "Add artificial delay to replication, read from follower",
+          "symptoms": ["user sees old data", "read-after-write inconsistency"],
+          "production_frequency": "continuous under write-heavy load",
+          "detection_difficulty": "high — no errors, just stale data",
+          "blast_radius": "user trust, business logic errors from stale state"
+        },
+        {
+          "id": "split-brain-divergence",
+          "name": "Split-Brain Data Divergence",
+          "how_to_induce": "Network partition, write to both leader and follower",
+          "symptoms": ["conflicting data on both sides", "irreconcilable state on heal"],
+          "production_frequency": "rare but catastrophic — network partitions",
+          "detection_difficulty": "high — only discovered when partition heals",
+          "blast_radius": "permanent data corruption if not detected"
+        }
+      ]
+    },
+    "7": {
+      "title": "Partitioning and Sharding",
+      "failures": [
+        {
+          "id": "hot-partition",
+          "name": "Hot Partition (Skewed Workload)",
+          "how_to_induce": "Send 80% of requests to keys on one shard",
+          "symptoms": ["one shard saturated while others idle", "latency spikes for affected keys"],
+          "production_frequency": "any power-law distribution (celebrities, viral content)",
+          "detection_difficulty": "medium — per-shard metrics reveal it",
+          "blast_radius": "all data on that shard affected"
+        },
+        {
+          "id": "shard-death",
+          "name": "Shard Unavailability",
+          "how_to_induce": "Kill one shard node entirely",
+          "symptoms": ["requests for that shard's keys fail", "other shards unaffected"],
+          "production_frequency": "hardware failures, network isolation",
+          "detection_difficulty": "low — clear error for specific key ranges",
+          "blast_radius": "1/N of data unavailable (N = number of shards)"
+        },
+        {
+          "id": "rebalancing-under-load",
+          "name": "Rebalancing During Traffic",
+          "how_to_induce": "Add new shard and trigger data migration while serving traffic",
+          "symptoms": ["double-reads during migration", "stale routing", "temporary inconsistency"],
+          "production_frequency": "every scale-up event",
+          "detection_difficulty": "medium — elevated error rate during migration",
+          "blast_radius": "all migrating keys temporarily affected"
+        }
+      ]
+    },
+    "8": {
+      "title": "Coordination and Consensus",
+      "failures": [
+        {
+          "id": "minority-partition",
+          "name": "Minority Node After Partition",
+          "how_to_induce": "Partition 3-node cluster into 2+1",
+          "symptoms": ["minority node cannot accept writes", "must step down as leader if it was one"],
+          "production_frequency": "network events, switch failures",
+          "detection_difficulty": "low — consensus protocol rejects operations",
+          "blast_radius": "minority side becomes read-only or unavailable"
+        },
+        {
+          "id": "split-brain-dual-leader",
+          "name": "Split-Brain Dual Leader",
+          "how_to_induce": "Symmetric partition where each node is isolated",
+          "symptoms": ["two leaders accept conflicting writes", "data divergence"],
+          "production_frequency": "rare — requires specific partition topology",
+          "detection_difficulty": "very high — each side thinks it's operating correctly",
+          "blast_radius": "catastrophic — conflicting data requiring manual resolution"
+        },
+        {
+          "id": "stale-lock-holder",
+          "name": "Stale Lock Holder After Pause",
+          "how_to_induce": "Hold a lock, pause the process (SIGSTOP), lock expires, another acquires, resume original",
+          "symptoms": ["two processes believe they hold the lock", "concurrent unsafe writes"],
+          "production_frequency": "GC pauses, process scheduling delays",
+          "detection_difficulty": "very high — requires fencing token validation",
+          "blast_radius": "data corruption from concurrent unsafe access"
+        }
+      ]
+    },
+    "9": {
+      "title": "Service Decomposition and Communication Patterns",
+      "failures": [
+        {
+          "id": "saga-partial-failure",
+          "name": "Saga Step Failure After Prior Commits",
+          "how_to_induce": "Fail service C after services A and B have committed",
+          "symptoms": ["A and B committed, C failed", "system in inconsistent state until compensation"],
+          "production_frequency": "any multi-service transaction under load",
+          "detection_difficulty": "medium — requires saga state tracking",
+          "blast_radius": "one transaction in inconsistent state"
+        },
+        {
+          "id": "timeout-cascade",
+          "name": "Synchronous Timeout Cascade",
+          "how_to_induce": "Make one downstream service slow (30s response)",
+          "symptoms": ["caller times out", "caller's caller times out", "chain of timeouts"],
+          "production_frequency": "any slow dependency in synchronous call chain",
+          "detection_difficulty": "medium — looks like everyone is slow (masks root cause)",
+          "blast_radius": "entire call chain, all requests through that path"
+        },
+        {
+          "id": "compensation-failure",
+          "name": "Compensation Step Failure",
+          "how_to_induce": "Trigger compensation (refund API) and have it fail too",
+          "symptoms": ["saga stuck", "manual intervention required", "customer sees inconsistent state for extended period"],
+          "production_frequency": "when failure conditions affect multiple services",
+          "detection_difficulty": "high — requires saga state monitoring",
+          "blast_radius": "stuck transactions accumulate, manual work grows"
+        }
+      ]
+    },
+    "10": {
+      "title": "Observability and Failure Detection",
+      "failures": [
+        {
+          "id": "latency-injection",
+          "name": "Single-Service Latency Injection",
+          "how_to_induce": "Add 2s delay to one downstream service",
+          "symptoms": ["P99 latency spikes in calling service", "upstream timeout cascade possible"],
+          "production_frequency": "database slow queries, GC pauses, dependency issues",
+          "detection_difficulty": "depends entirely on observability quality",
+          "blast_radius": "all paths through that service"
+        },
+        {
+          "id": "intermittent-errors",
+          "name": "Low-Rate Intermittent Errors",
+          "how_to_induce": "Fail 1% of requests randomly in one service",
+          "symptoms": ["slight error rate increase", "hard to reproduce", "sporadic user complaints"],
+          "production_frequency": "memory leaks, race conditions, flaky dependencies",
+          "detection_difficulty": "high — too rare for individual traces, requires statistical alerting",
+          "blast_radius": "1% of affected path's users"
+        },
+        {
+          "id": "cascading-latency-root-cause",
+          "name": "Cascading Latency (Multi-Service)",
+          "how_to_induce": "Slow service C, observe A→B→C latency propagation",
+          "symptoms": ["all services appear slow", "root cause hidden by downstream symptoms"],
+          "production_frequency": "any shared dependency slowdown",
+          "detection_difficulty": "high without distributed tracing — medium with it",
+          "blast_radius": "all paths through the affected dependency"
+        }
+      ]
+    },
+    "11": {
+      "title": "Resilience Patterns Under Failure",
+      "failures": [
+        {
+          "id": "thread-pool-exhaustion",
+          "name": "Thread Pool Exhaustion from Slow Dependency",
+          "how_to_induce": "Make one dependency slow without circuit breaker, send traffic",
+          "symptoms": ["ALL endpoints become slow (not just the one calling slow dependency)", "connection/thread pool at max"],
+          "production_frequency": "any unprotected slow dependency",
+          "detection_difficulty": "medium — symptom appears in the CALLER, not the root cause",
+          "blast_radius": "entire calling service (all endpoints)"
+        },
+        {
+          "id": "retry-storm",
+          "name": "Retry Storm After Brief Outage",
+          "how_to_induce": "Brief outage (5s), clients retry immediately with no backoff",
+          "symptoms": ["3x-10x normal traffic on recovery", "possible second outage from overload"],
+          "production_frequency": "every brief outage without proper retry policies",
+          "detection_difficulty": "low — traffic spike immediately visible",
+          "blast_radius": "recovering service gets hit again, extends outage"
+        },
+        {
+          "id": "circuit-breaker-extended-outage",
+          "name": "Circuit Breaker Extending Outage Duration",
+          "how_to_induce": "5s dependency failure, circuit breaker timeout set to 60s",
+          "symptoms": ["dependency recovered in 5s but circuit stays open for 55 more seconds"],
+          "production_frequency": "misconfigured circuit breakers — very common",
+          "detection_difficulty": "medium — circuit breaker state visible if instrumented",
+          "blast_radius": "all requests to that dependency fail for the open duration"
+        }
+      ]
+    },
+    "12": {
+      "title": "Capacity Planning and Evolution",
+      "failures": [
+        {
+          "id": "load-spike-ceiling",
+          "name": "10x Traffic Validates/Disproves Estimate",
+          "how_to_induce": "Generate 10x normal traffic load",
+          "symptoms": ["first bottleneck reveals itself — often NOT what was predicted"],
+          "production_frequency": "viral events, partnership launches, sales events",
+          "detection_difficulty": "low — very visible when it hits",
+          "blast_radius": "depends on which component breaks first"
+        },
+        {
+          "id": "slow-resource-leak",
+          "name": "Gradual Resource Leak Under Sustained Load",
+          "how_to_induce": "Sustained moderate load for hours (connections not closed, memory not freed)",
+          "symptoms": ["gradual degradation", "works fine for hours then suddenly fails"],
+          "production_frequency": "memory leaks, connection leaks, file handle leaks",
+          "detection_difficulty": "high — not visible in short tests, only under sustained load",
+          "blast_radius": "eventual total failure after long stable period"
+        },
+        {
+          "id": "weakest-link-cascade",
+          "name": "Weakest Component Cascading at Scale",
+          "how_to_induce": "Scale traffic until the component with lowest ceiling breaks, observe cascade",
+          "symptoms": ["one component saturates", "callers timeout", "cascade through system"],
+          "production_frequency": "every growth phase that outpaces one component",
+          "detection_difficulty": "medium — capacity metrics reveal it, but may not have alerts",
+          "blast_radius": "system-wide once the weakest link is saturated"
+        }
+      ]
+    }
+  }
+}
